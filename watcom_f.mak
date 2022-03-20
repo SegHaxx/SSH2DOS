@@ -3,7 +3,7 @@
 #
 
 # Debug
-#DEBUG=-d2
+DEBUG=-d2
 
 # uncomment this for B&W mode
 COLOR = -DCOLOR
@@ -15,11 +15,11 @@ COLOR = -DCOLOR
 CC = wcc386
 LINKER = wlink LibPath lib;$(%WATT_ROOT)\lib
 
-CFLAGS = -zq -mf -3r -s $(DEBUG) -i=$(%WATCOM)\h;.\include;$(%WATT_ROOT)\inc $(COLOR)
+CFLAGS = -zq -mf -3r -s $(DEBUG) -i="$(%WATCOM)\h;.\include;$(%WATT_ROOT)\inc" $(COLOR)
 # -DMEMWATCH
 
 .C.OBJ:	
-        $(CC) $(CFLAGS) $[@
+	$(CC) $(CFLAGS) $[@
 
 LIBS = lib\misc.lib lib\crypto.lib lib\ssh.lib lib\vt100.lib $(%WATT_ROOT)\lib\wattcpwf.lib lib\zlib_f.lib
 

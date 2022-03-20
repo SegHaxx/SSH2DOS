@@ -284,7 +284,7 @@ static void atnrm(unsigned char c)
                           
 	   case 9:	/* Horizontal tab */
 		if(PrintInAction)
-		   fputc('\t',stdprn);
+		   fputc('\t',stdout);
 		else
 		   DoTab();
 		break;
@@ -295,7 +295,7 @@ static void atnrm(unsigned char c)
 		if(cursy == lines - statusline) /* we are at the bottom */
 		   SbkAddline();
 		if(PrintInAction)
-		   fputc('\n',stdprn);
+		   fputc('\n',stdout);
 		else if (newline){
 			SetCurs(1, 0);
 			ScrollUp();
@@ -305,7 +305,7 @@ static void atnrm(unsigned char c)
 
 	   case 13:	/* Carriage return */
 		if(PrintInAction)
-		   fputc('\r',stdprn);
+		   fputc('\r',stdout);
 		else
 		   SetCurs(1, 0);
 		break;
@@ -335,7 +335,7 @@ static void atnrm(unsigned char c)
 
 	   default:
 		if(PrintInAction)
-		   fputc(outputtable[c],stdprn);
+		   fputc(outputtable[c],stdout);
 		else
 		   ChrWrite(outputtable[c]);
 		break;

@@ -46,6 +46,7 @@
 #if defined (MEMWATCH)
  #include "memwatch.h"
 #endif
+#include "limits.h"
 
 /* external functions */
 SendFuncPtr SendPacket;
@@ -78,16 +79,17 @@ static char *UserName = NULL;
 static char *PassWord = NULL;
 static char *KeyFile = NULL;
 static char *term;
-static unsigned short RemotePort = SSH_PORT;
-static unsigned short Keepalives = 0;
 static FILE *LogFile = NULL;
+static unsigned short RemotePort = SSH_PORT;
 
-volatile int timer = 0;       /* increased by timer interrupt */
+static int keepalive_ticks = INT_MAX;
+volatile int timer_ticks = 0;           /* increased by timer interrupt */
 void (__interrupt __far *oldhandler)(); /* for old timer interrupt */
 
 void __interrupt __far keepalive(void){
-  timer++;
-  _chain_intr(oldhandler);
+	if(timer_ticks<INT_MAX)
+		++timer_ticks;
+	_chain_intr(oldhandler);
 }
 
 /*
@@ -150,31 +152,42 @@ static void SSH2_Start_Shell_Or_Command(void)
 
 }
 
+static void int2f_idle(){
+	union REGS regs;
+	regs.w.ax=0x1680;
+	int386(0x2f,&regs,&regs);
+}
+
 /*
  * Client loop. This runs when the user successfully logged in,
  * until SSH connection is terminated
  */
-static short dosession(void)
-{
-char *str;
-unsigned long len;
-unsigned short i;
+static short dosession(void){
+	char *str;
+	unsigned long len;
+	unsigned short i;
 
+	timer_ticks=0;
    do{
-        /* send keepalive SSH_MSG_IGNORE packet if configured */
-        if( timer > Keepalives ){
-	   SSH_pkt_init(SSH_MSG_IGNORE);
-	   SSH_putstring("keepalive");
-	   SSH_pkt_send();
-	   timer = 0;
-        } /* if */
+		if(timer_ticks>1){
+			/* send keepalive SSH_MSG_IGNORE packet if configured */
+			if(timer_ticks > keepalive_ticks){
+				SSH_pkt_init(SSH_MSG_IGNORE);
+				SSH_putstring("keepalive");
+				SSH_pkt_send();
+				timer_ticks=2; /* keep idling */
+			}
+			int2f_idle();
+		}
 
         if(!tcp_tick(&GlobalConfig.s)){ /* TCP wait */
            puts("Remote host closed connection");
            return(EXIT_SSH);
         }
-        while(ConChk()) /* examine STDIN */
-	   DoKey();
+        while(ConChk()){ /* examine STDIN */
+			  DoKey();
+			  timer_ticks=0;
+		  }
    } while(!sock_dataready(&GlobalConfig.s));
 
    SbkSetPage(-1);
@@ -211,10 +224,10 @@ unsigned short i;
 /*
  * Get command line arguments
  */
-static void getargs(int argc, char *argv[])
-{
-unsigned short n, i, j, len;
-char *s;
+static void getargs(int argc, char *argv[]){
+		char* s;
+		int keepalive_minutes;
+		unsigned short n,i,j,len;
 #if defined (__386__)
    char usage[]="Usage: ssh2d386 [options] username remotehost [command [args]]\n"
 #else
@@ -323,11 +336,12 @@ char *s;
 
 	   case 'a':
 		if(*++s)
-		   Keepalives = atoi(s);
+		   keepalive_minutes = atoi(s);
 		else if(++i < argc)
-		   Keepalives = atoi(argv[i]);
+		   keepalive_minutes = atoi(argv[i]);
 		else
 		   fatal(usage);
+		keepalive_ticks=keepalive_minutes*1095; /* 60 min * ~18.2 ticks/min */
 		continue;
 
 	   case 'b':
@@ -471,11 +485,9 @@ int main(int argc, char **argv)
    VidInit(UserName, RemoteHost);
    VTInit();
 
-   if(Keepalives){	/* install keepalive timer */
-	Keepalives = Keepalives * 18 * 60; /* correct keepalives value */
-        oldhandler = _dos_getvect(0x1C);
-        _dos_setvect(0x1C, keepalive);
-   } /* if */
+   /* install keepalive timer */
+	oldhandler = _dos_getvect(0x1C);
+	_dos_setvect(0x1C, keepalive);
 
    while(EXIT_SSH != dosession());	/* Loop until session end */
 
@@ -487,8 +499,7 @@ int main(int argc, char **argv)
    if(Configuration & COMPRESSION_ENABLED)
 	Disable_Compression();
 
-   if(Keepalives)
-        _dos_setvect(0x1C, oldhandler);
+	_dos_setvect(0x1C, oldhandler);
 
    sock_close(&GlobalConfig.s); /* Close TCP socket */
 
